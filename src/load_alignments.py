@@ -23,6 +23,7 @@ from languages.semitic_languages import HebrewPredictor, ArabicPredictor
 from languages.morfeusz_support import MorfeuszPredictor
 from evaluate import evaluate_bias
 from languages.czech import CzechPredictor
+from qe_tokenization import perform_tokenization
 #=-----
 
 LANGAUGE_PREDICTOR = {
@@ -115,17 +116,22 @@ def get_translated_professions(alignment_fn: str, ds: List[List[str]], bitext: L
     return translated_professions, target_indices
 
 
-def output_predictions(target_sentences, gender_predictions, out_fn):
+def output_predictions(target_sentences, gender_predictions, tgt_inds, out_fn):
     """
     Write gender predictions to output file, for comparison
     with human judgments.
+    Params:
+        target_sentences
+        gender_predictions
+        tgt_inds: indices of the words in the target sentence that is gender-related
+        out_fn
     """
     assert(len(list(target_sentences)) == len(list(gender_predictions)))
     with open(out_fn, "w", encoding = "utf8") as fout:
         writer = csv.writer(fout, delimiter=",")
-        writer.writerow(["Sentence", "Predicted gender"])
-        for sent, gender in zip(target_sentences, gender_predictions):
-            writer.writerow([sent, str(gender).split(".")[1]])
+        writer.writerow(["Sentence", "Predicted gender", "Gender words indices"])
+        for sent, gender, tgt_ind in zip(target_sentences, gender_predictions, tgt_inds):
+            writer.writerow([sent, str(gender).split(".")[1], tgt_ind])
 
 def align_bitext_to_ds(bitext, ds):
     """
@@ -157,6 +163,13 @@ if __name__ == "__main__":
     gender_predictor = LANGAUGE_PREDICTOR[lang]()
 
     ds = [line.strip().split("\t") for line in open(ds_fn, encoding = "utf8")]
+    # Tokenize the original src sentence
+    src_sentences = [x[2] for x in ds]
+    tokenized_src_sentences = perform_tokenization('en', src_sentences)
+    tokenized_src_sentences = [' '.join(x) for x in tokenized_src_sentences]
+    for i, entry in enumerate(ds):
+        entry[2] = tokenized_src_sentences[i]
+
     full_bitext = [line.strip().split(" ||| ")
               for line in open(bi_fn, encoding = "utf8")]
     bitext = align_bitext_to_ds(full_bitext, ds)
@@ -174,7 +187,7 @@ if __name__ == "__main__":
                                       ds))]
 
     # Output predictions
-    output_predictions(target_sentences, gender_predictions, out_fn)
+    output_predictions(target_sentences, gender_predictions, tgt_inds, out_fn)
 
     d = evaluate_bias(ds, gender_predictions)
 
